@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
 
@@ -6,19 +7,29 @@ namespace Codli_GCI
 {
     class Program
     {
-        private static string dataDirectory;
+        //Codli GCI - Github Continuous Integration
+        private static string dataDirectory = Path.GetFullPath(Directory.GetCurrentDirectory()); // <-- exe's directory
+        private static string shadowFile = Path.Combine(dataDirectory, "shadow.cdl");
 
         static void Main(string[] args)
         {
+            /** Parms:
+             * -l [github-login]
+             * -p [github-password]
+             * -r [github-repository]
+             * -p [repository-platform] (dotnet-core) //includes building repo
+             * -d [build-destination]
+             * -off [service-name] (service which sould be disabled while CI)
+             * -c [command] (additional command after all)
+             */
             Console.Title = $"Codli GCI [v{Assembly.GetEntryAssembly().GetName().Version}]";
-            Console.WriteLine("Welcome in Codli GCI!");
+            Console.WriteLine("Welcome in Codli GCI!");                
         }
 
-        private static bool CheckPassword(string password)
+        private static string GetGithubLogin()
         {
-            //We need to store user's Github credintials, so it must be protected by password
-            //Password is right when first line of codli-data.shd equals "#Codli!"
-            
+            Console.WriteLine("Enter your Github login:");
+            return Console.ReadLine();
         }
     }
 }
