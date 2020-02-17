@@ -109,12 +109,14 @@ namespace Codli_GCI
                 switch (dict["--upddate"])
                 {
                     case "database":
-                        UpdateEFCoreDb(dict);
-                        break;
+                        return UpdateEFCoreDb(dict);
+
+                    default:
+                        return false;
                 }
             }
 
-
+            return false;
         }
 
         private static string GetBuildCommand(Dictionary<string, string> dict)
@@ -132,9 +134,10 @@ namespace Codli_GCI
             throw new NotImplementedException();
         }
 
-        private static void UpdateEFCoreDb(Dictionary<string, string> dict)
+        private static bool UpdateEFCoreDb(Dictionary<string, string> dict)
         {
-
+            RunCommand("dotnet ef database update");
+            return true;
         }
 
         private static void PrepareBuildDestination(Dictionary<string, string> dict)
