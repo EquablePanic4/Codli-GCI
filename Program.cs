@@ -22,6 +22,7 @@ namespace Codli_GCI
              * --runtime [repository-platform] (dotnet-core) //includes building repo
              * --build-configuration [.NET Core configuration]
              * --upddate [database ...]
+             * --secrets [path_to_file] - one line, one secret
              * --destination [build-destination]
              * --off [service-name] (service which sould be disabled while CI)
              * --command [command] (additional command after all)
@@ -71,6 +72,7 @@ namespace Codli_GCI
 
             if (dictionary.ContainsKey("--runtime")) //We need to build this application
             {
+                Console.WriteLine("Preparing to build project...");
                 var integrationResult = IntegrateGitProject(dictionary);
             }
         }
@@ -134,8 +136,14 @@ namespace Codli_GCI
             throw new NotImplementedException();
         }
 
+        private static bool SetDotnetSecrets(Dictionary<string, string> dict)
+        {
+
+        }
+
         private static bool UpdateEFCoreDb(Dictionary<string, string> dict)
         {
+            Console.WriteLine("Updating EF Core database...");
             RunCommand("dotnet ef database update");
             return true;
         }
@@ -179,6 +187,11 @@ namespace Codli_GCI
             return result;
         }
 
+        private static string RunCommand(string command, string directory)
+        {
+            char q = '"';
+            return RunCommand($"cd {q}{directory}{q} && {command}");
+        }
         #endregion
     }
 }
