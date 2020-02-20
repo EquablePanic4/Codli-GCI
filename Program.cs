@@ -119,7 +119,7 @@ namespace Codli_GCI
         private static bool IntegrateGitProject(Dictionary<string, string> dict)
         {
             //If we need to update EFCore DB, simply we do it
-            if (dict.ContainsKey("--upddate"))
+            if (dict.ContainsKey("--update"))
             {
                 switch (dict["--upddate"])
                 {
