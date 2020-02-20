@@ -10,6 +10,7 @@ namespace Codli_GCI
     {
         //Codli GCI - Github Continuous Integration
         private static string dataDirectory = "/tmp/codli-gci";
+        private static string logsFile = String.Empty;
 
         static void Main(string[] args)
         {
@@ -19,13 +20,13 @@ namespace Codli_GCI
              * -r [github-repository]
              * -o [github-organisation]
              * -b [github-branch]
+             * --logs [path_to_logs_file] <-- only if we want logs
              * --runtime [repository-platform] (dotnet-core) //includes building repo
              * --build-configuration [.NET Core configuration]
              * --upddate [database ...]
              * --secrets [path_to_file] - one line, one secret
              * --destination [build-destination]
              * --off [service-name] (service which sould be disabled while CI)
-             * --command [command] (additional command after all)
              * --config [path] (load config file with commands)
              */
             Console.Title = $"Codli GCI [v{Assembly.GetEntryAssembly().GetName().Version}]";
@@ -35,6 +36,15 @@ namespace Codli_GCI
             {
                 Console.WriteLine("An error occured with number of parms");
                 return;
+            }
+
+            //Cleaning temp dir...
+            if (!Directory.Exists(dataDirectory))
+                Directory.CreateDirectory(dataDirectory);
+            else
+            {
+                Directory.Delete(dataDirectory, true);
+                Directory.CreateDirectory(dataDirectory);
             }
 
             //We need to change args array to dictionary
@@ -53,6 +63,15 @@ namespace Codli_GCI
                     else
                         dict.Add(config[i], config[i + 1]);
                 }
+            }
+
+            //If we want logs, we must clean it out
+            if (dict.ContainsKey("--logs"))
+            {
+                logsFile = dict["--logs"];
+
+                if (File.Exists(logsFile))
+                    File.Delete(logsFile);
             }
 
             //Now we can interpretate parameters
@@ -93,12 +112,6 @@ namespace Codli_GCI
             if (dict.ContainsKey("-b"))
                 branchCmd = $" --branch {dict["-b"]} ";
 
-            //Get temp directory
-            if (Directory.Exists(dataDirectory))
-                Directory.Delete(dataDirectory);
-
-            Directory.CreateDirectory(dataDirectory);
-
             //Now we can create git command
             return $"git -C {dataDirectory} clone{branchCmd}{repoUri} ."; // <-- . means that we won't clone root directory
         }
@@ -111,12 +124,33 @@ namespace Codli_GCI
                 switch (dict["--upddate"])
                 {
                     case "database":
-                        return UpdateEFCoreDb(dict);
+                        return UpdateEFCoreDb();
 
                     default:
                         return false;
                 }
             }
+
+            //If project contains secret keys, we must apply them
+            if (dict.ContainsKey("--secrets"))
+                SetDotnetSecrets(dict);
+
+            //If we need to turn of service, we must do it
+            if (dict.ContainsKey("--off"))
+                ChangeServiceState(dict["--off"], false);
+
+            //If we want to build app, we must do it
+            if (dict.ContainsKey("--destination"))
+            {
+                CleanBuildDestination(dict);
+                Console.WriteLine("Building project...");
+                RunCommand(GetBuildCommand(dict));
+                Console.WriteLine("Building project complete");
+            }
+
+            //If we turned off any service, we need to turn it on again.
+            if (dict.ContainsKey("--off"))
+                ChangeServiceState(dict["--off"], true);
 
             return false;
         }
@@ -130,40 +164,87 @@ namespace Codli_GCI
                 if (dict.ContainsKey("--build-configuration"))
                     buildConfig = $" --configuration {dict["--build-configuration"]}";
 
-                return $"dotnet build {dataDirectory}{buildConfig} -o {dict["--destination"]}";
+                Console.WriteLine("Preparing build destination...");
+
+                if (Directory.Exists(dict["--destination"]))
+                    Directory.Delete(dict["--destination"], true);
+
+                Directory.CreateDirectory(dict["--destination"]);
+
+                return $"dotnet publish {dataDirectory}{buildConfig} -o {dict["--destination"]}";
             }
 
             throw new NotImplementedException();
         }
 
-        private static bool SetDotnetSecrets(Dictionary<string, string> dict)
+        private static void CleanBuildDestination(Dictionary<string, string> dict)
         {
+            if (Directory.Exists(dict["--destination"]))
+                Directory.Delete(dict["--destination"], true);
 
+            Directory.CreateDirectory(dict["--destination"]);
         }
 
-        private static bool UpdateEFCoreDb(Dictionary<string, string> dict)
+        private static void SetDotnetSecrets(Dictionary<string, string> dict)
+        {
+            Console.WriteLine("Preparing to set user secrets...");
+            var secrets = File.ReadAllLines(dict["--secrets"]);
+            foreach (var secret in secrets)
+            {
+                //We need to file with secrets like "[...]":"[...]" <-- no spaces, no comas
+                var arr = SplitSecretLine(secret);
+                Console.WriteLine($"Setting secret value for {arr[0]}");
+                RunCommand($"dotnet user-secrets set {arr[0]} {arr[1]}", dataDirectory);
+            }
+        }
+
+        private static bool UpdateEFCoreDb()
         {
             Console.WriteLine("Updating EF Core database...");
-            RunCommand("dotnet ef database update");
+            RunCommand("dotnet ef database update", dataDirectory);
             return true;
-        }
-
-        private static void PrepareBuildDestination(Dictionary<string, string> dict)
-        {
-
         }
 
         private static string ChangeServiceState(string service, bool state)
         {
             if (state)
+            {
+                Console.WriteLine($"Starting service {service}");
                 return RunCommand($"sudo systemctl start {service}");
+            }
 
+            Console.WriteLine($"Stopping service {service}");
             return RunCommand($"sudo systemctl stop {service}");
         }
 
         #endregion
 
         #region Helpers
+
+        private static string[] SplitSecretLine(string line)
+        {
+            var arr = line.Split('"');
+            var list = new List<string>();
+
+            foreach (var e in arr)
+                if (!String.IsNullOrEmpty(e) && !String.IsNullOrWhiteSpace(e))
+                    if (e.Replace(" ", null) != ":" && e.Replace(" ", null) != ",")
+                        list.Add($"\"{e}\"");
+
+            if (list.Count != 2)
+            {
+                Console.WriteLine($"Line with secret {line} is bad, there are {list.Count} arguments, but should be exactly 2");
+                throw new ArgumentException();
+            }
+
+            return list.ToArray();
+        }
+
+        private static void LogOutput(string output)
+        {
+            if (!String.IsNullOrEmpty(logsFile))
+                File.AppendAllText(logsFile, $"{output}\r\n");
+        }
 
         private static string RunCommand(string command)
         {
@@ -183,6 +264,8 @@ namespace Codli_GCI
 
                 proc.WaitForExit();
             }
+
+            LogOutput(result);
 
             return result;
         }
